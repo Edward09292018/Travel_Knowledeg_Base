@@ -98,8 +98,8 @@ class KBImportWorkflow:
         :return: 执行结果
         """
         if stream:
-            # return self.graph.stream(state, stream_mode="values")
-            return self.graph.stream(state)
+            # updates：每个事件是 {node_name: update}，供 run_graph_task 正确 add_done_task
+            return self.graph.stream(state, stream_mode="updates")
         else:
             return self.graph.invoke(state)
 
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     setup_logging()
 
     # 定义初始状态
-    init_state = {"import_file_path": r"D:\doc\H3C MSR系列开放多业务路由器 Web配置指导(V7)-R6728-6W102-整本手册.pdf","file_dir": r"D:\output"}
+    init_state = {"import_file_path": r"D:\旅游\数据\交通指南\成都交通指南.md","file_dir": r"D:\output"}
     workflow = KBImportWorkflow()
 
     # 方式1：实例化后使用（推荐方式，可复用）

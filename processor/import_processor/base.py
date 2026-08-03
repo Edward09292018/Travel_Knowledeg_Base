@@ -9,7 +9,7 @@ import colorlog
 
 from processor.import_processor.config_main import ImportConfig,get_config
 from processor.import_processor.exceptions import ImportProcessError
-from utils.task_utils import add_running_task, add_done_task
+from utils.task_utils import add_running_task, add_done_task, remove_running_task
 
 """
 导入流程节点基类
@@ -90,6 +90,11 @@ class BaseNode(ABC):
 
             return result
         except Exception as e:
+            # 失败也要从 running 移除，否则前端日志会一直显示「进行中」
+            try:
+                remove_running_task(state.get("task_id", ""), self.name)
+            except Exception:
+                pass
             self.logger.error(f"{self.name} 执行失败: {e}")
             raise ImportProcessError(
                 message="执行失败",

@@ -84,6 +84,19 @@ def add_running_task(task_id: str, node_name: str, is_stream:bool = False) -> No
         task_push_queue(task_id)
 
 
+def remove_running_task(task_id: str, node_name: str, is_stream: bool = False) -> None:
+    """
+    仅从 running 中移除节点（失败时用，不写入 done_list）。
+    """
+    if not task_id:
+        return
+    _ensure_task(task_id)
+    running = _tasks_running_list[task_id]
+    _tasks_running_list[task_id] = [n for n in running if n != node_name]
+    if is_stream:
+        task_push_queue(task_id)
+
+
 def add_done_task(task_id: str, node_name: str, is_stream:bool = False) -> None:
     """
     添加“已完成”的节点任务。

@@ -46,6 +46,11 @@ class NodeEntry(BaseNode):
         elif import_file_path_obj.suffix == ".md":
             state["is_md_read_enabled"] = True
             state["md_path"] = import_file_path
+            # 直接导入 MD 时没有 pdf_to_md 节点写内容，这里读入供后续节点使用
+            try:
+                state["md_content"] = import_file_path_obj.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                state["md_content"] = import_file_path_obj.read_text(encoding="utf-8", errors="ignore")
         else:
             raise ValidationError(message=f"该文件的后缀格式{import_file_path_obj.suffix}不支持")
 

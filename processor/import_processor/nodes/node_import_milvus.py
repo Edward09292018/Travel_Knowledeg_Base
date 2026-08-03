@@ -233,7 +233,7 @@ class NodeImportMilvus(BaseNode):
 if __name__ == "__main__":
     setup_logging()
 
-    json_path = r"D:\output\hak180产品安全手册\state_vector.json"
+    json_path = r"D:\旅游\数据\交通指南\state_vector.json"
     with open(json_path, "r", encoding="utf-8") as f:
         state_json = f.read()
 

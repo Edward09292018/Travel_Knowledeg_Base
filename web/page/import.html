@@ -321,23 +321,24 @@
                 const res = await fetch(`${API_BASE}/status/${taskId}`);
                 const data = await res.json();
 
-                // 渲染日志（done/running）
-                renderLogs(itemEl, data.done_list, data.running_list);
-                
                 if (data.status === 'completed') {
+                    // 终态强制清空进行中，避免残留 running 显示
+                    renderLogs(itemEl, data.done_list, []);
                     statusBadge.textContent = '已完成';
                     statusBadge.className = 'status-badge status-completed';
                     updateProgressBar(progressBar, 100);
                     clearInterval(interval);
                 } else if (data.status === 'processing') {
-                    // 保持处理中状态
+                    renderLogs(itemEl, data.done_list, data.running_list);
                     statusBadge.textContent = '处理中...';
-                    // 确保进度为30%
-                     updateProgressBar(progressBar, 30);
+                    updateProgressBar(progressBar, 30);
                 } else if (data.status === 'failed') {
+                    renderLogs(itemEl, data.done_list, []);
                     statusBadge.textContent = '失败';
                     statusBadge.className = 'status-badge status-error';
                     clearInterval(interval);
+                } else {
+                    renderLogs(itemEl, data.done_list, data.running_list);
                 }
             } catch (e) {
                 console.error('Polling error', e);

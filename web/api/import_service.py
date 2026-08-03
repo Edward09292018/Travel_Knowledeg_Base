@@ -192,7 +192,9 @@ async def get_task_progress(task_id: str):
     }
     # 记录状态查询日志，方便追踪前端轮询情况
     logger.info(
-        f"[{task_id}] 任务状态查询，当前状态：{task_status_info['status']}，已完成节点：{task_status_info['done_list']}")
+        f"[{task_id}] 任务状态查询，当前状态：{task_status_info['status']}，"
+        f"已完成节点：{task_status_info['done_list']}，进行中：{task_status_info['running_list']}"
+    )
     return task_status_info
 
 

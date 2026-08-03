@@ -49,9 +49,9 @@ class NodeDocumentSplit(BaseNode):
 
         # 步骤5：输出文档切分统计信息
         self._step_5_print_stats(lines_count, sections)
-
-        # 步骤6：Chunk结果本地JSON备份
-        self._step_6_backup(state, sections)
+        if state.get("is_pdf_read_enabled"):
+            # 步骤6：Chunk结果本地JSON备份
+            self._step_6_backup(state, sections)
 
         # 写入状态字典
         state["chunks"] = sections
@@ -382,14 +382,14 @@ class NodeDocumentSplit(BaseNode):
 if __name__ == "__main__":
     setup_logging()
 
-    md_path = r"D:\output\hak180产品安全手册\hak180产品安全手册_new.md"
+    md_path = r"D:\\BaiduNetdiskDownload\\10-尚硅谷大模型极速版之掌柜智库\\4.视频\\day16\\尚硅谷大模型项目实战之掌柜智库实战\\资料\\旅游\\数据\\交通指南\\成都交通指南.md"
     with open(md_path, "r", encoding="utf-8") as f:
         md_content = f.read()
 
     init_state = {
         "md_path": md_path,
         "md_content": md_content,
-        "file_title": "hak180产品安全手册"
+        "file_title": "成都交通指南"
     }
 
     # 执行核心处理流程

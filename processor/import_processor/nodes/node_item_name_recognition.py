@@ -184,7 +184,7 @@ class NodeItemNameRecognition(BaseNode):
                          .replace("\r", ""))
 
             # 7. 如果返回空字符串
-            if not item_name:
+            if not item_name or item_name == "空字符串":
                 return file_title
 
             # 8. 返回结果
@@ -377,14 +377,14 @@ class NodeItemNameRecognition(BaseNode):
 if __name__ == "__main__":
     setup_logging()
 
-    md_path = r"D:\output\hak180产品安全手册\chunks.json"
+    md_path = r"D:\旅游\数据\交通指南\chunks.json"
     with open(md_path, "r", encoding="utf-8") as f:
         chunks_json = f.read()
 
     chunks = json.loads(chunks_json)
     init_state = {
         "chunks": chunks,
-        "file_title": "hak180产品安全手册"
+        "file_title": "成都交通指南"
     }
 
     # 执行核心处理流程
