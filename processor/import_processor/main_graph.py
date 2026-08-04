@@ -1,8 +1,8 @@
 # processor/import_processor/main_graph.py
 
 import json
-
 import logging
+
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 
@@ -11,7 +11,6 @@ from processor.import_processor.nodes.node_bge_embedding import NodeBGEEmbedding
 from processor.import_processor.nodes.node_document_split import NodeDocumentSplit
 from processor.import_processor.nodes.node_entry import NodeEntry
 from processor.import_processor.nodes.node_import_milvus import NodeImportMilvus
-from processor.import_processor.nodes.node_item_name_recognition import NodeItemNameRecognition
 from processor.import_processor.nodes.node_md_img import NodeMDImg
 from processor.import_processor.nodes.node_pdf_to_md import NodePDFToMD
 from processor.import_processor.state import ImportGraphState
@@ -60,7 +59,7 @@ class KBImportWorkflow:
         graph.add_node("node_pdf_to_md", NodePDFToMD())
         graph.add_node("node_md_img", NodeMDImg())
         graph.add_node("node_document_split", NodeDocumentSplit())
-        graph.add_node("node_item_name_recognition", NodeItemNameRecognition())
+        # graph.add_node("node_item_name_recognition", NodeItemNameRecognition())
         graph.add_node("node_bge_embedding", NodeBGEEmbedding())
         graph.add_node("node_import_milvus", NodeImportMilvus())
 
@@ -82,8 +81,8 @@ class KBImportWorkflow:
         # 5. 注册顺序边
         graph.add_edge("node_pdf_to_md", "node_md_img")
         graph.add_edge("node_md_img", "node_document_split")
-        graph.add_edge("node_document_split", "node_item_name_recognition")
-        graph.add_edge("node_item_name_recognition", "node_bge_embedding")
+        graph.add_edge("node_document_split", "node_bge_embedding")
+        # graph.add_edge("node_item_name_recognition", "node_bge_embedding")
         graph.add_edge("node_bge_embedding", "node_import_milvus")
         graph.add_edge("node_import_milvus", END)
 
@@ -109,7 +108,7 @@ if __name__ == "__main__":
     setup_logging()
 
     # 定义初始状态
-    init_state = {"import_file_path": r"D:\旅游\数据\交通指南\成都交通指南.md","file_dir": r"D:\output"}
+    init_state = {"import_file_path": r"D:\旅游\数据\交通指南\成都交通指南.md", "file_dir": r"D:\output"}
     workflow = KBImportWorkflow()
 
     # 方式1：实例化后使用（推荐方式，可复用）
