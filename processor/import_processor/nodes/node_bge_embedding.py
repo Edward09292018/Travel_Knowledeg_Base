@@ -7,6 +7,7 @@ from processor.import_processor.base import BaseNode, setup_logging
 from processor.import_processor.exceptions import StateFieldError
 from processor.import_processor.state import ImportGraphState
 from utils.embedding_utils import generate_embeddings
+from utils.travel_meta_utils import get_primary_entity_name
 
 
 class NodeBGEEmbedding(BaseNode):
@@ -71,7 +72,7 @@ class NodeBGEEmbedding(BaseNode):
         步骤 2: 批量生成向量（核心业务逻辑）
         核心逻辑：
             1. 分批处理：避免一次性处理过多数据导致显存溢出（OOM）。
-            2. 文本构造：将 item_name 和 content 拼接，增强语义（商品名作为核心特征前置）。
+            2. 文本构造：将主实体名、content_type/region 与 content 拼接，增强旅游语义。
             3. 向量生成：调用模型批量生成 Dense（稠密）和 Sparse（稀疏）向量。
         参数：
             chunks: List[Dict] 待向量化的文本切片列表
@@ -89,9 +90,7 @@ class NodeBGEEmbedding(BaseNode):
             batch_texts = chunks[i:i + batch_size]
             input_texts = []
             for doc in batch_texts:
-                item_name = doc["item_name"]
-                content = doc["content"]
-                input_texts.append(f"{item_name}\n{content}" if item_name else content)
+                input_texts.append(self._build_embedding_text(doc))
 
             docs_embeddings = generate_embeddings(input_texts)
             for j, doc in enumerate(batch_texts):
@@ -104,6 +103,34 @@ class NodeBGEEmbedding(BaseNode):
 
         # 返回带向量的文本切片列表（供后续存入Milvus）
         return output_data
+
+    @staticmethod
+    def _build_embedding_text(doc: Dict) -> str:
+        """
+        构造向量化文本：主实体（若有）+ 类型/地区前缀 + 正文。
+        城市级指南通常只有 region，不会把文档标题当实体。
+        """
+        content = doc.get("content") or ""
+        entity_name = get_primary_entity_name(doc)
+        content_type = (doc.get("content_type") or "").strip()
+        region = (doc.get("region") or "").strip()
+
+        prefix_parts = []
+        # 仅当实体名不同于地区时前置，避免「成都\n类型:酒店信息 地区:成都」重复
+        if entity_name and entity_name != region:
+            prefix_parts.append(entity_name)
+
+        meta_bits = []
+        if content_type:
+            meta_bits.append(f"类型:{content_type}")
+        if region:
+            meta_bits.append(f"地区:{region}")
+        if meta_bits:
+            prefix_parts.append(" ".join(meta_bits))
+
+        if not prefix_parts:
+            return content
+        return "\n".join(prefix_parts) + "\n" + content
 
 
 if __name__ == "__main__":

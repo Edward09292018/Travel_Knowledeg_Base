@@ -6,6 +6,7 @@ from pathlib import Path
 from processor.import_processor.base import BaseNode, setup_logging
 from processor.import_processor.exceptions import ValidationError, StateFieldError, FileProcessingError
 from processor.import_processor.state import ImportGraphState
+from utils.travel_meta_utils import infer_travel_meta_from_path
 
 
 class NodeEntry(BaseNode):
@@ -22,8 +23,9 @@ class NodeEntry(BaseNode):
         2.判断类型: 检查文件后缀是 `.pdf` 还是 `.md`。
         3.设置标记: 更新 state 中的 `is_pdf_read_enabled/pdf_path` 或 `is_md_read_enabled/md_path`，供主图路由使用。
         4.提取标题: 从文件名中提取 `file_title`，后续作为元数据。
+        5.路径规则: 推断 content_type / region / source_* 等文档级旅游元数据。
         :param state: `import_file_path`
-        :return: `is_pdf_read_enabled/pdf_path` 或 `is_md_read_enabled/md_path` 、`file_title`
+        :return: `is_pdf_read_enabled/pdf_path` 或 `is_md_read_enabled/md_path` 、`file_title`、旅游元数据
         """
 
         # 1. 从state中获取文件
@@ -57,7 +59,27 @@ class NodeEntry(BaseNode):
         # 4. 获取上传文件的标题，更新到state中
         state["file_title"] = import_file_path_obj.stem
 
-        # 5. 返回state
+        # 5. 路径/文件名规则推断旅游元数据（上游已传 source_path 时优先保留）
+        meta = infer_travel_meta_from_path(
+            file_path=import_file_path,
+            file_title=state["file_title"],
+            source_file_name=state.get("source_file_name") or import_file_path_obj.name,
+            source_path=state.get("source_path") or import_file_path,
+        )
+        state["content_type"] = meta["content_type"]
+        state["region"] = meta["region"]
+        state["source_file_name"] = meta["source_file_name"]
+        state["source_path"] = meta["source_path"]
+        state["attraction_name"] = meta["attraction_name"]
+        state["route_name"] = meta["route_name"]
+        state["hotel_name"] = meta["hotel_name"]
+        state["restaurant_name"] = meta["restaurant_name"]
+        self.logger.info(
+            f"路径规则元数据: content_type={meta['content_type']}, "
+            f"region={meta['region']}, source={meta['source_file_name']}"
+        )
+
+        # 6. 返回state
         return state
 
 

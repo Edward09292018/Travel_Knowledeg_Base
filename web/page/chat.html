@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>掌柜智库知识库</title>
+  <title>旅游知识库</title>
   <style>
     :root{
       --bg:#f3f5f7;
@@ -173,6 +173,21 @@
     .progress ul{margin:8px 0 0 18px;padding:0}
     .progress li{margin:4px 0;font-size:12px;color:#56657a}
 
+    .entity-tags{
+      margin-top:6px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+    }
+    .entity-tag{
+      font-size:11px;
+      color:#2f5f8f;
+      background:rgba(26,167,255,.12);
+      border:1px solid rgba(26,167,255,.25);
+      border-radius:999px;
+      padding:2px 8px;
+    }
+
     .answer-images{
       margin-top:10px;
       display:flex;
@@ -266,8 +281,8 @@
       <div class="brand">
         <div class="logo"></div>
         <div class="title">
-          <strong>掌柜智库知识库</strong>
-          <span id="subTitle">在线 · 可查询知识库与联网信息</span>
+          <strong>旅游知识库</strong>
+          <span id="subTitle">在线 · 景点 / 线路 / 酒店 / 美食 / 交通查询</span>
         </div>
       </div>
       <div class="top-actions">
@@ -282,16 +297,16 @@
     <div class="chat" id="chat">
       <div class="dayline">今天</div>
       <div class="msg bot">
-        <div class="avatar bot">掌柜智库</div>
+        <div class="avatar bot">旅小助</div>
         <div>
-          <div class="bubble">你好，我是掌柜智库知识库客服。你可以直接提问，我会在“阶段进度”里展示处理过程。</div>
-          <div class="meta">提示：可以问“如何使用万用表测量电压？”</div>
+          <div class="bubble">你好，我是旅游知识库助手。你可以问景点介绍、线路推荐、酒店住宿、美食和交通指南，我会在“阶段进度”里展示处理过程。</div>
+          <div class="meta">提示：可以问“成都宽窄巷子怎么玩？”“三亚住哪里方便？”</div>
         </div>
       </div>
     </div>
 
     <div class="composer">
-      <textarea id="input" placeholder="请输入问题（Enter 发送，Shift+Enter 换行）"></textarea>
+      <textarea id="input" placeholder="例如：成都有哪些必去景点？（Enter 发送，Shift+Enter 换行）"></textarea>
       <button class="send" id="send">发送</button>
     </div>
     <div class="hint">快捷键：<span class="kbd">Enter</span> 发送，<span class="kbd">Shift</span>+<span class="kbd">Enter</span> 换行</div>
@@ -521,6 +536,13 @@
       }
     }
 
+    function renderEntityTags(names){
+      const list = Array.isArray(names) ? names.filter(Boolean) : [];
+      if(list.length === 0) return '';
+      const tags = list.map(n => `<span class="entity-tag">${escapeHtml(n)}</span>`).join('');
+      return `<div class="entity-tags">${tags}</div>`;
+    }
+
     function addUserMsg(text){
       const html = `
         <div class="msg user">
@@ -535,11 +557,12 @@
       scrollToBottom();
     }
 
-    function addUserMsgWithTime(text, ts){
+    function addUserMsgWithTime(text, ts, entityNames){
       const html = `
         <div class="msg user">
           <div>
             <div class="bubble">${escapeHtml(text)}</div>
+            ${renderEntityTags(entityNames)}
             <div class="meta">${formatTime(ts)}</div>
           </div>
           <div class="avatar">我</div>
@@ -549,13 +572,14 @@
       scrollToBottom();
     }
 
-    function addBotMsgWithTime(text, ts, imageUrls){
+    function addBotMsgWithTime(text, ts, imageUrls, entityNames){
       const id = 'bot-his-' + Math.random().toString(36).slice(2);
       const html = `
         <div class="msg bot" id="${id}">
-          <div class="avatar bot">掌柜智库</div>
+          <div class="avatar bot">旅小助</div>
           <div>
             <div class="bubble"><div class="answer"></div></div>
+            ${renderEntityTags(entityNames)}
             <div class="meta">${formatTime(ts)}</div>
           </div>
         </div>
@@ -573,7 +597,7 @@
       const id = 'bot-' + Math.random().toString(36).slice(2);
       const html = `
         <div class="msg bot" id="${id}">
-          <div class="avatar bot">掌柜智库</div>
+          <div class="avatar bot">旅小助</div>
           <div style="min-width: 180px;">
             <div class="bubble">
               <span class="typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
@@ -679,9 +703,9 @@
         for(let i=1;i<nodes.length;i++) nodes[i].remove();
         for(const item of items){
           if(item.role === 'user'){
-            addUserMsgWithTime(item.text || '', item.ts);
+            addUserMsgWithTime(item.text || '', item.ts, item.item_names || []);
           }else{
-            addBotMsgWithTime(item.text || '', item.ts, item.image_urls || []);
+            addBotMsgWithTime(item.text || '', item.ts, item.image_urls || [], item.item_names || []);
           }
         }
         scrollToBottom();

@@ -27,7 +27,7 @@ class QueryGraphState(TypedDict):
     answer: str  # 最终生成的答案
 
     # 辅助信息
-    item_names: List[str]  # 提取出的商品名称
+    item_names: List[str]  # 已确认的旅游实体名（景点/线路/酒店/餐厅/地区）
     rewritten_query: str  # 改写后的问题
     history: list  # 历史对话记录
     is_stream: bool  # 是否流式输出

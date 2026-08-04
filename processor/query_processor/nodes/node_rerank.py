@@ -46,10 +46,13 @@ class NodeRerank(NodeBase):
         # 3. 动态 Top_K 截取(断崖检测)
         cutoff_docs = self._step_3_cliff_cutoff(reranked_docs)
 
-        # 4. 更新state
+        # 4. 本地知识库优先：有本地命中时，把本地文档排前面，避免被联网摘要淹没
+        cutoff_docs = self._prefer_local_docs(cutoff_docs)
+
+        # 5. 更新state
         state['reranked_docs'] = cutoff_docs
 
-        # 5. 返回state
+        # 6. 返回state
         return state
 
     def _step_1_merge_multi_source_docs(self, state: QueryGraphState) -> List[Dict[str, Any]]:
@@ -58,18 +61,24 @@ class NodeRerank(NodeBase):
         final_docs = []
 
         # 1. 获取本地 RRF 的文档
-        for rrf_doc in state.get('rrf_chunks'):
+        for rrf_doc in state.get('rrf_chunks') or []:
             format_rrf_doc = {
                 "content": rrf_doc.get('content'),
                 "title": rrf_doc.get('title'),
                 "chunk_id": rrf_doc.get('chunk_id'),
                 "url": None,
-                "source": "local"
+                "source": "local",
+                "content_type": rrf_doc.get("content_type"),
+                "region": rrf_doc.get("region"),
+                "attraction_name": rrf_doc.get("attraction_name"),
+                "route_name": rrf_doc.get("route_name"),
+                "hotel_name": rrf_doc.get("hotel_name"),
+                "restaurant_name": rrf_doc.get("restaurant_name"),
             }
             final_docs.append(format_rrf_doc)
 
         # 2. 获取 web 远程的文档
-        for web_doc in state.get('web_search_docs'):
+        for web_doc in state.get('web_search_docs') or []:
             format_web_doc = {
                 "content": web_doc.get('snippet'),
                 "title": web_doc.get('title'),
@@ -154,6 +163,29 @@ class NodeRerank(NodeBase):
                 break
 
         return ranked_docs[:cutoff_pos]
+
+    def _prefer_local_docs(self, ranked_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        有本地知识库命中时，本地文档优先保留；联网结果仅作尾部补充。
+        """
+        if not ranked_docs:
+            return []
+
+        local_docs = [d for d in ranked_docs if (d.get("source") or "local") == "local"]
+        web_docs = [d for d in ranked_docs if d.get("source") == "web"]
+
+        if not local_docs:
+            return ranked_docs
+
+        # 本地至少保留 min_topk，再视情况补少量联网
+        keep_local = local_docs[:RERANK_MAX_TOPK]
+        remain = max(0, RERANK_MAX_TOPK - len(keep_local))
+        keep_web = web_docs[: min(2, remain)] if remain > 0 else []
+        merged = keep_local + keep_web
+        logger.info(
+            f"重排后优先本地知识库: local={len(keep_local)}, web_supplement={len(keep_web)}"
+        )
+        return merged
 
 
 if __name__ == "__main__":

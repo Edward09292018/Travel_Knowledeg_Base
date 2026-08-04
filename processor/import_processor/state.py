@@ -33,7 +33,16 @@ class ImportGraphState(TypedDict):
 
     # ==================== 文件信息 ====================
     file_title: str                 # 文件标题（不含扩展名）
-    item_name: str                  # 识别出的商品/产品名称
+
+    # ==================== 旅游元数据（文档级） ====================
+    content_type: str               # 内容类型
+    attraction_name: str            # 景点名称
+    route_name: str                 # 线路名称
+    hotel_name: str                 # 酒店名称
+    restaurant_name: str            # 餐厅名称
+    region: str                     # 地区/城市
+    source_file_name: str           # 来源文件名
+    source_path: str                # 来源路径或资源链接
 
     # ==================== 处理中间数据 ====================
     md_content: str                 # Markdown 文档内容
@@ -62,7 +71,21 @@ GRAPH_DEFAULT_STATE: ImportGraphState = {
 
     "chunks": [],
 
-    "item_name": "",
+    "content_type": "",
+
+    "attraction_name": "",
+
+    "route_name": "",
+
+    "hotel_name": "",
+
+    "restaurant_name": "",
+
+    "region": "",
+
+    "source_file_name": "",
+
+    "source_path": "",
 
 }
 

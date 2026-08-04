@@ -8,6 +8,7 @@ from utils.embedding_utils import generate_embeddings
 from utils.json_format_utils import serialize_json
 from utils.llm_utils import get_llm_client
 from utils.milvus_utils import create_hybrid_search_requests, get_milvus_client, hybrid_search
+from utils.travel_meta_utils import CHUNK_OUTPUT_FIELDS, build_entity_filter_expr
 
 
 class NodeSearchEmbeddingHyde(NodeBase):
@@ -25,18 +26,18 @@ class NodeSearchEmbeddingHyde(NodeBase):
         核心思想：通过LLM生成假设性答案（HyDE文档），将其向量化后用于检索，以解决短查询语义稀疏问题。
 
         执行步骤：
-        1. 参数提取：从会话状态中获取改写后的查询（rewritten_query）和已确认的商品名（item_names）。
+        1. 参数提取：从会话状态中获取改写后的查询（rewritten_query）和已确认的旅游实体（item_names）。
         2. 生成假设文档 (Step 1)：调用LLM，基于用户问题生成一段假设性的理想回答（即HyDE文档）。
         3. 混合检索 (Step 2)：
            - 将“用户问题 + 假设文档”合并，生成BGE-M3稠密+稀疏向量。
-           - 在Milvus中执行混合检索（带商品名过滤），召回最相似的知识切片。
+           - 在Milvus中执行混合检索（带旅游实体过滤），召回最相似的知识切片。
         4. 结果封装：返回检索到的切片列表和生成的假设文档，更新会话状态。
 
         :param state: 会话状态字典，包含 rewritten_query, item_names 等
         :return: 包含 hyde_embedding_chunks (检索结果) 和 hyde_doc (假设文档) 的字典
         """
 
-        # 1、用户问题和已确认商品名
+        # 1、用户问题和已确认实体名
         rewritten_query = state.get("rewritten_query")
         item_names = state.get("item_names")
 
@@ -97,7 +98,7 @@ class NodeSearchEmbeddingHyde(NodeBase):
 
         :param rewritten_query: 改写后的查询
         :param hyde_doc: Step 1 生成的假设性文档
-        :param item_names: 商品名称列表，用于元数据过滤 (item_name in [...])
+        :param item_names: 旅游实体名称列表，用于元数据过滤
         :return: 检索结果列表
         """
 
@@ -116,23 +117,19 @@ class NodeSearchEmbeddingHyde(NodeBase):
             # 3. 获取Milvus的集合
             collection_name = milvus_config.chunks_collection
 
-            # 4、处理 item_names 中的引号，防止注入或语法错误
-            expr = None
-            if item_names:
-                # quoted = ", ".join(f'"{v}"' for v in item_names)
-                # expr = f"item_name in [{quoted}]"
-                # 'item_name in ["BrotherHAK-180烫金机","BrotherHAK180烫金机"]'
-                expr = f'item_name in {item_names}'
+            # 4、旅游实体过滤
+            expr = build_entity_filter_expr(item_names)
+            if expr:
                 logger.info(f"步骤2: 过滤条件: {expr}")
             else:
-                logger.info("步骤2: 未指定商品名过滤，将全库检索")
+                logger.info("步骤2: 未指定实体过滤，将全库检索")
 
-                # 5、构造Milvus混合搜索请求对象
+            # 5、构造Milvus混合搜索请求对象
             reqs = create_hybrid_search_requests(
                 dense_vector=dense_vec,
                 sparse_vector=sparse_vec,
                 expr=expr,
-                limit=10  # 底层检索返回数量（后续会再过滤为5，预留更多结果做重排序）
+                limit=10
             )
 
             # 6、执行混合向量检索
@@ -143,7 +140,7 @@ class NodeSearchEmbeddingHyde(NodeBase):
                 collection_name=collection_name,
                 reqs=reqs,
                 ranker_weights=(0.8, 0.2),
-                output_fields=["chunk_id", "content", "item_name"],
+                output_fields=CHUNK_OUTPUT_FIELDS,
             )
 
             return res[0] if res else []
@@ -155,8 +152,8 @@ class NodeSearchEmbeddingHyde(NodeBase):
 
 if __name__ == "__main__":
     init_state = {
-        "rewritten_query": "关于brother HAK180烫金机，如何调节转印温度？",
-        "item_names": ["BrotherHAK180烫金机", "BrotherHAK-180烫金机"]
+        "rewritten_query": "成都宽窄巷子怎么玩？",
+        "item_names": ["宽窄巷子", "成都"]
     }
     node_search_embedding_hyde = NodeSearchEmbeddingHyde()
     result = node_search_embedding_hyde(init_state)

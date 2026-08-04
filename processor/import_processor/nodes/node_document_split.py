@@ -169,7 +169,6 @@ class NodeDocumentSplit(BaseNode):
                     "parent_title": title,
                     "title": new_title,
                     "content": full_text,
-                    "part": idx,
                     "file_title": section.get("file_title")
                 }
             )
@@ -233,10 +232,6 @@ class NodeDocumentSplit(BaseNode):
 
                 #合并段落
                 current_chunk["content"] += "\n\n" + section_content
-
-                #处理part
-                if "part" in section:
-                    current_chunk["part"] = section["part"]
 
             else:
                 #保存当前段落

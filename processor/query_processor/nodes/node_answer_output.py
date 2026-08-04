@@ -25,7 +25,7 @@ class NodeAnswerOutput(NodeBase):
     def process(self, state: QueryGraphState) -> QueryGraphState:
         """
         1 判断state 中的answer是否已经存在，如果存在直接输出answer中的答案，注意判断是否需要流式输出需要则流式输出
-        2 根据state中的问题、重新问题、历史对话、提问商品（item_names）、 重排内容 组织prompt 并调用llm 生成答案
+        2 根据state中的问题、重新问题、历史对话、提问实体（item_names）、 重排内容 组织prompt 并调用llm 生成答案
         3 调用大模型输出答案 注意判断是否需要流式输出需要则流式输出
         4 把答案写入到mongodb的history中 利用utils/mongo_history_utils.py中的save_chat_message方法
         5 做最后一次push操作（主要是为了触发前端图片渲染)
@@ -102,31 +102,35 @@ class NodeAnswerOutput(NodeBase):
 
         """
         阶段二：构建 Prompt
-        根据state中的问题、重新问题、历史对话、提问商品（item_names）、 重排内容 组装 LLM 提示词
+        根据state中的问题、重新问题、历史对话、提问实体（item_names）、 重排内容 组装 LLM 提示词
         """
         char_budget = MAX_CONTEXT_CHARS
 
-        # 1. 获取问题和商品名
+        # 1. 获取问题和实体名
         # 优先使用重写后的问题
         question = state.get("rewritten_query") or state.get("original_query", "")
-        item_names = state["item_names"]
+        item_names = state.get("item_names") or []
 
-        # 2. 格式化上下文文档
-        context_str, char_budget = self._format_reranked_docs(
-            state.get("reranked_docs") or [], char_budget
-        )
+        # 2. 格式化上下文文档：优先本地知识库切片，避免被联网结果带偏
+        context_docs = self._select_context_docs(state.get("reranked_docs") or [])
+        context_str, char_budget = self._format_reranked_docs(context_docs, char_budget)
+        local_count = sum(1 for d in context_docs if (d.get("source") or "local") == "local")
+        logger.info(f"答案上下文文档数={len(context_docs)}，其中本地知识库={local_count}")
 
         # 3. 格式化历史对话
         history_str, char_budget = self._format_chat_history(
             state.get("history") or [], char_budget
         )
 
-        # 4. 格式化 Item Names (提问商品)
-        item_names_str = ", ".join(item_names) if item_names else "无指定商品"
+        # 4. 格式化实体名（景点/线路/酒店/餐厅/地区）
+        item_names_str = ", ".join(item_names) if item_names else "无指定实体"
 
         # 5. 组装提示词
+        if not context_str.strip():
+            context_str = "（知识库未检索到相关切片，请明确告知用户知识库暂无相关信息，不要自行编造。）"
+
         prompt = ANSWER_PROMPT.format(
-            context=context_str or "无参考内容",
+            context=context_str,
             history=history_str if history_str else "暂无历史对话",
             item_names=item_names_str,
             question=question,
@@ -134,39 +138,64 @@ class NodeAnswerOutput(NodeBase):
         logger.info(f"组装后的提示词为：{prompt}")
         return prompt
 
+    def _select_context_docs(self, reranked_docs: List[Dict]) -> List[Dict]:
+        """
+        优先使用本地知识库切片；仅当本地为空时才使用联网结果。
+        """
+        if not reranked_docs:
+            return []
+
+        local_docs = [d for d in reranked_docs if (d.get("source") or "local") == "local"]
+        web_docs = [d for d in reranked_docs if d.get("source") == "web"]
+
+        if local_docs:
+            # 有知识库命中时，只用本地，避免模型跟联网摘要跑偏
+            logger.info(f"使用本地知识库 {len(local_docs)} 条作为回答依据（忽略联网 {len(web_docs)} 条）")
+            return local_docs
+
+        if web_docs:
+            logger.warning("本地知识库无命中，降级使用联网结果作为补充")
+            return web_docs
+        return []
+
     def _format_reranked_docs(self, reranked_docs: List[Dict], char_budget: int) -> Tuple[str, int]:
         """格式化重排序文档，带字符预算控制"""
         formatted_lines = []
         used_chars = 0
 
-        # 从重排内容中，提取为资料字符串，不可超过限额
-        # 优先使用结构化 reranked_docs（包含 source/chunk_id/url/score），便于约束与引用
-        # ---------------------------------------------------------
-        # 逻辑解释：
-        # 1. 遍历重排序后的文档列表 (reranked_docs)，这些文档已经按相关性从高到低排序。
-        # 2. 对每个文档提取关键信息 (text, source, chunk_id, url, title, score)。
-        # 3. 构造 "元数据头 + 正文" 格式的字符串，例如：
-        #    "[1] [local] [chunk_id=123] [score=0.95] [title=操作手册]
-        #     这里是文档的正文内容..."
-        # 4. 累加字符长度，如果超过 MAX_CONTEXT_CHARS (如 12000 字符)，则停止添加，
-        #    确保 Prompt 长度在 LLM 的处理范围内，避免 Token 溢出。
-        # ---------------------------------------------------------
         for idx, doc in enumerate(reranked_docs, start=1):
-            content = doc.get("content")
+            content = (doc.get("content") or "").strip()
+            if not content:
+                continue
+
             meta_tags = [f"[{idx}]"]
             for field, template in [
                 ("source", "[source={}]"),
                 ("chunk_id", "[chunk_id={}]"),
                 ("url", "[url={}]"),
                 ("title", "[title={}]"),
+                ("content_type", "[type={}]"),
+                ("region", "[region={}]"),
+                ("attraction_name", "[attraction={}]"),
+                ("route_name", "[route={}]"),
+                ("hotel_name", "[hotel={}]"),
+                ("restaurant_name", "[restaurant={}]"),
+                ("source_file_name", "[file={}]"),
             ]:
-                field_value = str(doc.get(field)).strip()
-                if field_value:
-                    meta_tags.append(template.format(field_value))
+                raw = doc.get(field)
+                if raw is None:
+                    continue
+                field_value = str(raw).strip()
+                if not field_value or field_value.lower() == "none":
+                    continue
+                meta_tags.append(template.format(field_value))
 
             relevance_score = doc.get("score")
             if relevance_score is not None:
-                meta_tags.append(f"[score={float(relevance_score):.4f}]")
+                try:
+                    meta_tags.append(f"[score={float(relevance_score):.4f}]")
+                except (TypeError, ValueError):
+                    pass
 
             doc_entry = " ".join(meta_tags) + "\n" + content
 

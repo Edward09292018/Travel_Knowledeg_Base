@@ -13,6 +13,7 @@ from processor.import_processor.nodes.node_entry import NodeEntry
 from processor.import_processor.nodes.node_import_milvus import NodeImportMilvus
 from processor.import_processor.nodes.node_md_img import NodeMDImg
 from processor.import_processor.nodes.node_pdf_to_md import NodePDFToMD
+from processor.import_processor.nodes.node_travel_meta import NodeTravelMeta
 from processor.import_processor.state import ImportGraphState
 
 
@@ -59,7 +60,7 @@ class KBImportWorkflow:
         graph.add_node("node_pdf_to_md", NodePDFToMD())
         graph.add_node("node_md_img", NodeMDImg())
         graph.add_node("node_document_split", NodeDocumentSplit())
-        # graph.add_node("node_item_name_recognition", NodeItemNameRecognition())
+        graph.add_node("node_travel_meta", NodeTravelMeta())
         graph.add_node("node_bge_embedding", NodeBGEEmbedding())
         graph.add_node("node_import_milvus", NodeImportMilvus())
 
@@ -81,8 +82,8 @@ class KBImportWorkflow:
         # 5. 注册顺序边
         graph.add_edge("node_pdf_to_md", "node_md_img")
         graph.add_edge("node_md_img", "node_document_split")
-        graph.add_edge("node_document_split", "node_bge_embedding")
-        # graph.add_edge("node_item_name_recognition", "node_bge_embedding")
+        graph.add_edge("node_document_split", "node_travel_meta")
+        graph.add_edge("node_travel_meta", "node_bge_embedding")
         graph.add_edge("node_bge_embedding", "node_import_milvus")
         graph.add_edge("node_import_milvus", END)
 

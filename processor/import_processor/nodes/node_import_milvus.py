@@ -123,16 +123,28 @@ class NodeImportMilvus(BaseNode):
 
     def _create_chunks_collection(self, collections_name, milvus_client, vector_dimension):
 
-        # 1. 创建schem
+        # 注意：若已有旧 schema 的同名集合，需手动删除后重建，新增字段才会生效。
+        self.logger.info(
+            f"创建旅游知识库集合 {collections_name}（含 content_type/region/attraction_name 等字段）"
+        )
+
+        # 1. 创建schema
         schema = milvus_client.create_schema(auto_id=True, enable_dynamic_field=True)
         # 2. 创建列
         schema.add_field(field_name="chunk_id", datatype=DataType.INT64, is_primary=True, auto_id=True)
         schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535)  # 切片内容
         schema.add_field(field_name="title", datatype=DataType.VARCHAR, max_length=100)  # 切片标题
         schema.add_field(field_name="parent_title", datatype=DataType.VARCHAR, max_length=100)  # 父标题
-        schema.add_field(field_name="part", datatype=DataType.INT8)  # 分片编号
         schema.add_field(field_name="file_title", datatype=DataType.VARCHAR, max_length=100)  # 源文件标题
-        schema.add_field(field_name="item_name", datatype=DataType.VARCHAR, max_length=100)  # 商品名称（幂等性依据）
+        # 旅游知识库字段（四类实体名按 content_type 互斥，同条只填一个）
+        schema.add_field(field_name="content_type", datatype=DataType.VARCHAR, max_length=50)   # 内容类型
+        schema.add_field(field_name="attraction_name", datatype=DataType.VARCHAR, max_length=100) # 景点名
+        schema.add_field(field_name="route_name", datatype=DataType.VARCHAR, max_length=100) # 线路名
+        schema.add_field(field_name="hotel_name", datatype=DataType.VARCHAR, max_length=100) # 酒店名
+        schema.add_field(field_name="restaurant_name", datatype=DataType.VARCHAR, max_length=100) #  餐厅名
+        schema.add_field(field_name="region", datatype=DataType.VARCHAR, max_length=100)  # 区域
+        schema.add_field(field_name="source_file_name", datatype=DataType.VARCHAR, max_length=200) # 源文件名
+        schema.add_field(field_name="source_path", datatype=DataType.VARCHAR, max_length=500) # 源文件路径
         schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)  # 稀疏向量
         schema.add_field(field_name="dense_vector", datatype=DataType.FLOAT_VECTOR, dim=vector_dimension)  # 稠密向量
 
@@ -205,14 +217,42 @@ class NodeImportMilvus(BaseNode):
         for item in chunks_json_data:
             item_copy = item.copy()
 
-            # 补充 part 字段
-            if "part" not in item_copy:
-                item_copy["part"] = 0
+            # 不入库的中间字段：part（切片序号，业务无用）、item_name（已废弃）
+            item_copy.pop("part", None)
+            item_copy.pop("item_name", None)
+            item_copy.pop("chunk_id", None)
 
             # Milvus VARCHAR max_length 按 UTF-8 字节计，不能只用 [:100] 按字符截
-            for field in ("title", "parent_title", "file_title", "item_name"):
+            for field, max_bytes in (
+                ("title", 100),
+                ("parent_title", 100),
+                ("file_title", 100),
+                ("content_type", 50),
+                ("attraction_name", 100),
+                ("route_name", 100),
+                ("hotel_name", 100),
+                ("restaurant_name", 100),
+                ("region", 100),
+                ("source_file_name", 200),
+                ("source_path", 500),
+            ):
                 if field in item_copy and item_copy[field] is not None:
-                    item_copy[field] = truncate_varchar(item_copy[field], max_bytes=100)
+                    item_copy[field] = truncate_varchar(str(item_copy[field]), max_bytes=max_bytes)
+
+            # 缺省空字符串，避免缺字段
+            for field in (
+                "content_type",
+                "attraction_name",
+                "route_name",
+                "hotel_name",
+                "restaurant_name",
+                "region",
+                "source_file_name",
+                "source_path",
+            ):
+                item_copy.setdefault(field, "")
+                if item_copy[field] is None:
+                    item_copy[field] = ""
 
             # 添加到待插入列表
             data_to_insert.append(item_copy)

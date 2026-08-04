@@ -20,8 +20,8 @@ from utils.task_utils import update_task_status, add_done_task, add_running_task
     get_running_task_list
 
 app = FastAPI(
-    title="掌柜智库-导入API",
-    description="此文档是掌柜智库导入流程的API接口说明"
+    title="旅游知识库-导入API",
+    description="此文档是旅游知识库导入流程的API接口说明"
 )
 
 # 2. 跨域
@@ -49,7 +49,8 @@ async def get_import_page():
 
 # 4. 后台任务：LangGraph全流程执行
 # 独立于主请求线程，由BackgroundTasks触发，避免阻塞接口响应
-def run_graph_task(task_id: str, file_dir: str, import_file_path: str):
+def run_graph_task(task_id: str, file_dir: str, import_file_path: str,
+                   source_file_name: str = "", source_path: str = ""):
     """
     LangGraph全流程执行后台任务
     核心流程：初始化状态 → 流式执行图节点 → 实时更新任务状态 → 异常捕获
@@ -59,6 +60,8 @@ def run_graph_task(task_id: str, file_dir: str, import_file_path: str):
     :param task_id: 全局唯一任务ID，关联单个文件的全流程处理
     :param file_dir: 该任务的本地文件存储目录（含临时文件/解析结果）
     :param import_file_path: 上传文件的本地绝对路径
+    :param source_file_name: 来源文件名
+    :param source_path: 来源路径或资源链接（优先 MinIO URL）
     """
     try:
         # 1. 更新任务全局状态为：处理中
@@ -69,6 +72,8 @@ def run_graph_task(task_id: str, file_dir: str, import_file_path: str):
             "task_id": task_id,
             "file_dir": file_dir,
             "import_file_path": import_file_path,
+            "source_file_name": source_file_name or Path(import_file_path).name,
+            "source_path": source_path or import_file_path,
         }
 
         # 3. 流式执行LangGraph全流程（stream模式：实时获取每个节点的执行结果）
@@ -134,6 +139,7 @@ async def upload_files(background_tasks: BackgroundTasks, files: List[UploadFile
         # 6. 将本地文件上传至MinIO对象存储，做持久化保存
         # 构建MinIO中的文件对象名：pdf_files/YYYYMMDD/文件名（按日期分层，和本地一致）
         minio_object_name = f"pdf_files/{datetime.now().strftime('%Y%m%d')}/{file.filename}"
+        source_path = import_file_path  # 默认本地路径；上传成功后改为 MinIO URL
         try:
             # 获取MinIO客户端实例
             minio_client = get_minio_client()
@@ -148,6 +154,7 @@ async def upload_files(background_tasks: BackgroundTasks, files: List[UploadFile
                 file_path=import_file_path,
                 content_type=file.content_type  # 传递文件原始MIME类型
             )
+            source_path = f"http://{minio_config.endpoint}/{minio_bucket_name}/{minio_object_name}"
             logger.info(f"[{task_id}] 文件已成功上传至MinIO，桶名：{minio_bucket_name}，对象名：{minio_object_name}")
         except Exception as e:
             # MinIO上传失败，记录警告日志（不中断后续流程，本地文件仍可继续处理）
@@ -157,7 +164,14 @@ async def upload_files(background_tasks: BackgroundTasks, files: List[UploadFile
         add_done_task(task_id, "upload_file")
 
         # 8. 将LangGraph全流程处理加入FastAPI后台任务（异步执行，不阻塞当前接口响应）
-        background_tasks.add_task(run_graph_task, task_id, file_dir, import_file_path)
+        background_tasks.add_task(
+            run_graph_task,
+            task_id,
+            file_dir,
+            import_file_path,
+            file.filename or Path(import_file_path).name,
+            source_path,
+        )
         logger.info(f"[{task_id}] 已将LangGraph全流程加入后台任务，任务已启动")
 
     # 9. 所有文件处理完毕，返回上传成功信息和所有TaskID（前端基于TaskID轮询进度）
