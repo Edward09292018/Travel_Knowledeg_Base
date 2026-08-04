@@ -77,13 +77,13 @@ class BaseNode(ABC):
             self.logger.info(f"--- {self.name} 开始 ---")
 
             # 开始：记录节点运行状态
-            # add_running_task(state["task_id"], self.name)
+            add_running_task(state["task_id"], self.name)
 
             # 2. 执行节点
             result = self.process(state)
 
             # 结束：记录节点完成状态
-            # add_done_task(state["task_id"], self.name)
+            add_done_task(state["task_id"], self.name)
 
             # 3. 执行节点成功
             self.logger.info(f"--- {self.name} 完成 ---")
